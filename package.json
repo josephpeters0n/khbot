@@ -1,0 +1,13 @@
+{
+    "type": "module",
+    "dependencies": {
+        "@atproto/api": "^0.6.20",
+        "cron": "^3.1.7",
+        "dotenv": "^16.4.5",
+        "process": "^0.11.10"
+    },
+    "devDependencies": {
+        "@types/node": "^22.7.9",
+        "tsx": "^4.19.1"
+    }
+}
