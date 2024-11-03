@@ -15,15 +15,16 @@ dotenv.config();
 
 // Create a Bluesky Agent
 const agent = new BskyAgent({ service: 'https://bsky.social' });
+console.log('Bluesky Agent initialized.');
 
 // Pick a random numbered folder from ./posts
 function getRandomFolder(basePath: string): string | null {
     const folders = fs.readdirSync(basePath).filter((name) =>
         fs.statSync(path.join(basePath, name)).isDirectory()
     );
-    if (folders.length === 0) return null;
-    const randomFolder = folders[Math.floor(Math.random() * folders.length)];
-    return path.join(basePath, randomFolder);
+    return folders.length > 0 
+        ? path.join(basePath, folders[Math.floor(Math.random() * folders.length)]) 
+        : null;
 }
 
 // Find the image file within the folder
@@ -53,47 +54,50 @@ async function postContent(textVal: string, imageVal?: Buffer, altVal?: string) 
     }
 
     await agent.post(postData);
+    console.log('Content posted successfully.');
 }
 
 // Handle login and posting
 async function main() {
-    await agent.login({
-        identifier: process.env.BLUESKY_USERNAME!,
-        password: process.env.BLUESKY_PASSWORD!
-    });
+    try {
+        await agent.login({
+            identifier: process.env.BLUESKY_USERNAME!,
+            password: process.env.BLUESKY_PASSWORD!,
+        });
 
-    const folderPath = getRandomFolder('./posts');
-    if (!folderPath) {
-        console.error('No folders found in ./posts');
-        return;
+        const folderPath = getRandomFolder('./posts');
+        if (!folderPath) return;
+
+        const textPath = path.join(folderPath, 'text.txt');
+        if (!fs.existsSync(textPath)) return;
+
+        const textVal = fs.readFileSync(textPath, 'utf-8').trim();
+        const altVal = fs.existsSync(path.join(folderPath, 'alt.txt'))
+            ? fs.readFileSync(path.join(folderPath, 'alt.txt'), 'utf-8').trim()
+            : undefined;
+
+        const imagePath = findImageFile(folderPath);
+        const imageVal = imagePath ? fs.readFileSync(imagePath) : undefined;
+
+        await postContent(textVal, imageVal, altVal);
+
+        fs.renameSync(folderPath, path.join('./prevPosts', path.basename(folderPath)));
+    } catch (error) {
+        console.error('Error during execution:', error);
     }
-
-    const textPath = path.join(folderPath, 'text.txt');
-    const altPath = path.join(folderPath, 'alt.txt');
-    const imagePath = findImageFile(folderPath);
-
-    if (!fs.existsSync(textPath)) {
-        console.error(`Missing text.txt in folder: ${folderPath}`);
-        return;
-    }
-
-    const textVal = fs.readFileSync(textPath, 'utf-8').trim();
-    const altVal = fs.existsSync(altPath) ? fs.readFileSync(altPath, 'utf-8').trim() : undefined;
-    const imageVal = imagePath ? fs.readFileSync(imagePath) : undefined;
-
-    await postContent(textVal, imageVal, altVal);
-
-    // Move the processed folder to prevPosts
-    const destination = path.join('./prevPosts', path.basename(folderPath));
-    fs.renameSync(folderPath, destination);
-
-    console.log(`Posted content from folder ${path.basename(folderPath)} and moved it to ./prevPosts`);
 }
 
 // Run this on a cron job
-const scheduleExpressionMinute = '* * * * *'; // Run once every minute for testing
-const scheduleExpression = '0 */4 * * *'; // Run every three hours in production
+const scheduleExpression = '0 9,15,21 * * *';
 
-const job = new CronJob(scheduleExpression, main); // Use scheduleExpressionMinute for testing
+console.log('Setting up cron job...');
+const job = new CronJob(scheduleExpression, async () => {
+    console.log(`Cron job triggered at ${new Date().toISOString()}`);
+    await main();
+});
 
 job.start();
+console.log('Cron job started.');
+
+// Initial run to verify functionality
+main().catch((error) => console.error('Initial run error:', error));
